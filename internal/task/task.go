@@ -157,35 +157,3 @@ func ListSpecificTasks(s Status) error {
 
 	return nil
 }
-
-// func ListInProgress() ([]*Task, error) {
-// 	tasks, err := getTasks()
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	var i int
-// 	for index, task := range tasks {
-// 		if task.Status == IN_PROGRESS {
-// 			tasks[i], tasks[index] = tasks[index], tasks[i]
-// 		}
-// 	}
-
-// 	return tasks[:i], nil
-// }
-
-// func ListDone() ([]*Task, error) {
-// 	tasks, err := getTasks()
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	var i int
-// 	for index, task := range tasks {
-// 		if task.Status == DONE {
-// 			tasks[i], tasks[index] = tasks[index], tasks[i]
-// 		}
-// 	}
-
-// 	return tasks[:i], nil
-// }
