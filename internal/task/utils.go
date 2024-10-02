@@ -3,11 +3,12 @@ package task
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 )
 
-func readDataFile() (*os.File, error) {
+func openDataFile() (*os.File, error) {
 	exePath, err := os.Executable()
 	if err != nil {
 		return nil, fmt.Errorf("[!] An error occured when tried to open data file: %w", err)
@@ -24,12 +25,47 @@ func readDataFile() (*os.File, error) {
 	return file, nil
 }
 
-func parseTasks(data []byte) ([]*Task, error) {
+func readDataFile() ([]byte, error) {
+	file, err := openDataFile()
+	if err != nil {
+		return nil, err
+	}
+
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return nil, fmt.Errorf("[!] Error while reading data from file: %w", err)
+	}
+
+	return data, nil
+}
+
+func getTasks() ([]*Task, error) {
 	var tasks []*Task
+
+	data, err := readDataFile()
+	if err != nil {
+		return nil, err
+	}
 
 	if err := json.Unmarshal(data, &tasks); err != nil {
 		return nil, fmt.Errorf("[!] Error while parsing tasks: %w", err)
 	}
 
 	return tasks, nil
+}
+
+func updateDataFile(data []byte) error {
+	file, err := os.Create("data.json")
+	if err != nil {
+		return err
+	}
+
+	_, err = file.Write(data)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

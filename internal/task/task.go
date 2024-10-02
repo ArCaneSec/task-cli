@@ -3,45 +3,46 @@ package task
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 	"time"
 )
 
+type Status string
+
 const (
-	TODO        = "TODO"
-	IN_PROGRESS = "IN_PROGRESS"
-	DONE        = "DONE"
+	TODO        Status = "TODO"
+	IN_PROGRESS Status = "IN_PROGRESS"
+	DONE        Status = "DONE"
 )
 
 type Task struct {
 	Id          int       `json:"id"`
 	Description string    `json:"description"`
-	Status      string    `json:"status"`
+	Status      Status    `json:"status"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
-func AddTask(description string) (*Task, error) {
-	file, err := readDataFile()
+func (t Task) String() string {
+	return fmt.Sprintf(
+	"Task Id %d\n"+ 
+	"Current Status: %s\n"+
+	"Created At: %s\n"+
+	"Last Update: %s\n", t.Id, t.Status, t.CreatedAt.Format(time.ANSIC), t.UpdatedAt.Format(time.ANSIC),
+	)
+}
 
+func AddTask(description string) (*Task, error) {
+	data, err := readDataFile()
 	if err != nil {
 		return nil, err
 	}
 
-	defer file.Close()
-
-	data, err := io.ReadAll(file)
-	if err != nil {
-		return nil, fmt.Errorf("[!] Error while reading data from file: %w", err)
-	}
-
-	var lastId int
+	var (
+		tasks  []*Task
+		lastId int
+	)
 
 	if len(data) != 0 {
-
-		var tasks []Task
-
 		err = json.Unmarshal(data, &tasks)
 		if err != nil {
 			return nil, fmt.Errorf("[!] Error while parsing json data: %w", err)
@@ -49,96 +50,65 @@ func AddTask(description string) (*Task, error) {
 
 		lastId = tasks[len(tasks)-1].Id
 
-		newTask := &Task{
-			Id:          lastId + 1,
-			Description: description,
-			Status:      TODO,
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
-		}
-
-		encodedTasks, _ := json.Marshal(newTask)
-
-		var whatToWrite []byte
-		whatToWrite = append(whatToWrite, byte(','))
-		whatToWrite = append(whatToWrite, encodedTasks...)
-		whatToWrite = append(whatToWrite, byte(']'))
-
-		file.WriteAt(whatToWrite, int64(len(data)-1))
-		return newTask, nil
-
-	} else {
-		newTask := []Task{{
-			Id:          lastId + 1,
-			Description: description,
-			Status:      TODO,
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now()},
-		}
-		encodedTasks, _ := json.Marshal(&newTask)
-		file.Write(encodedTasks)
-
-		return &newTask[0], nil
 	}
+	newTask := &Task{
+		Id:          lastId + 1,
+		Description: description,
+		Status:      TODO,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+	tasks = append(tasks, newTask)
+
+	encodedTasks, _ := json.MarshalIndent(tasks, "", "	")
+
+	if err = updateDataFile(encodedTasks); err != nil {
+		return nil, err
+	}
+
+	return newTask, nil
 
 }
 
-func UpdateTask(id int, description string) (*Task, error) {
-	file, err := readDataFile()
-
+func GetTasks(id int) (*Task, []*Task, error) {
+	tasks, err := getTasks()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-
-	defer file.Close()
-
-	data, err := io.ReadAll(file)
-	if err != nil {
-		return nil, fmt.Errorf("[!] Error while reading data from file: %w", err)
-	}
-
-	tasks, err := parseTasks(data)
-	if err != nil {
-		return nil, err
-	}
-
-	var modifiedTask *Task
 
 	for _, task := range tasks {
 		if task.Id == id {
-			task.Description = description
-			task.UpdatedAt = time.Now()
-			modifiedTask = task
+			return task, tasks, nil
+		}
+	}
+	return nil, nil, fmt.Errorf("[!] Couldn't find a task with provided id")
+}
+
+func UpdateTasks(newTask *Task, tasks []*Task) (*Task, error) {
+	var modifiedTask *Task
+
+	for _, task := range tasks {
+		if task.Id == newTask.Id {
+			task = newTask
+			newTask.UpdatedAt = time.Now()
 			break
 		}
 	}
 
-	encodedTasks, err := json.Marshal(tasks)
+	encodedTasks, err := json.MarshalIndent(tasks, "", "	")
 	if err != nil {
 		return nil, fmt.Errorf("[!] Error while updating data: %w", err)
 	}
 
-	file, _ = os.Create(file.Name())
-	file.Write(encodedTasks)
+	if err = updateDataFile(encodedTasks); err != nil {
+		return nil, err
+	}
 
 	return modifiedTask, nil
 }
 
 func DeleteTask(id int) error {
-	file, err := readDataFile()
-
-	if err != nil {
-		return err
-	}
-
-	defer file.Close()
-
-	data, err := io.ReadAll(file)
-	if err != nil {
-		return fmt.Errorf("[!] Error while reading data from file: %w", err)
-	}
-
-	tasks, err := parseTasks(data)
+	tasks, err := getTasks()
 	if err != nil {
 		return err
 	}
@@ -151,10 +121,71 @@ func DeleteTask(id int) error {
 			break
 		}
 	}
-	
-	encodedTasks, _ := json.Marshal(tasks)
-	file, _ = os.Create(file.Name())
-	file.Write(encodedTasks)
+
+	encodedTasks, _ := json.MarshalIndent(tasks, "", "	")
+	if err = updateDataFile(encodedTasks); err != nil {
+		return err
+	}
 
 	return nil
 }
+
+func ListAll() error {
+	tasks, err := getTasks()
+	if err != nil {
+		return err
+	}
+
+	for _, task := range tasks {
+		fmt.Println(*task)
+	}
+
+	return nil
+}
+
+func ListSpecificTasks(s Status) error {
+	tasks, err := getTasks()
+	if err != nil {
+		return err
+	}
+
+	for _, task := range tasks {
+		if task.Status == s {
+			fmt.Println(task)
+		}
+	}
+
+	return nil
+}
+
+// func ListInProgress() ([]*Task, error) {
+// 	tasks, err := getTasks()
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	var i int
+// 	for index, task := range tasks {
+// 		if task.Status == IN_PROGRESS {
+// 			tasks[i], tasks[index] = tasks[index], tasks[i]
+// 		}
+// 	}
+
+// 	return tasks[:i], nil
+// }
+
+// func ListDone() ([]*Task, error) {
+// 	tasks, err := getTasks()
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	var i int
+// 	for index, task := range tasks {
+// 		if task.Status == DONE {
+// 			tasks[i], tasks[index] = tasks[index], tasks[i]
+// 		}
+// 	}
+
+// 	return tasks[:i], nil
+// }
